@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(sqlite3 data/raw.db \".schema\")",
+      "Bash(python -c \"import py_compile; py_compile.compile\\(''predict.py'', doraise=True\\); print\\(''predict.py OK''\\)\")",
+      "Bash(python -c \"import py_compile; py_compile.compile\\(''features/player_features.py'', doraise=True\\); print\\(''player_features.py OK''\\)\")",
+      "Bash(python -c \"import py_compile; py_compile.compile\\(''collector/player_stats.py'', doraise=True\\); print\\(''player_stats.py OK''\\)\")",
+      "Bash(python -c \"import py_compile; py_compile.compile\\(''model/train.py'', doraise=True\\); print\\(''train.py OK''\\)\")",
+      "Bash(python -c \"import py_compile; py_compile.compile\\(''features/builder.py'', doraise=True\\); print\\(''builder.py OK''\\)\")",
+      "Bash(python -c \":*)",
+      "Bash(python features/player_features.py understat)",
+      "Bash(python:*)",
+      "Bash(streamlit run:*)",
+      "Bash(timeout 8)",
+      "Read(//c/Users/Salim/AppData/Local/Temp/claude/C--Users-Salim-predict-football-predictor/b3d071c7-572d-4ee9-91c2-0d4f3daeb246/tasks/**)",
+      "Bash(where streamlit:*)",
+      "Bash(pip show:*)",
+      "Bash(timeout 5 tail -f C:/Users/Salim/AppData/Local/Temp/claude/C--Users-Salim-predict-football-predictor/9f7ee776-e697-4580-9428-4143e3a15d3b/tasks/b4cvqc61o.output)",
+      "Bash(where python:*)",
+      "Bash(where python3:*)",
+      "Bash(timeout 8 tail -f C:/Users/Salim/AppData/Local/Temp/claude/C--Users-Salim-predict-football-predictor/9f7ee776-e697-4580-9428-4143e3a15d3b/tasks/beboyt2oc.output)",
+      "Bash(pkill -f \"streamlit run dashboard\")",
+      "Bash(timeout 8 tail -f C:/Users/Salim/AppData/Local/Temp/claude/C--Users-Salim-predict-football-predictor/9f7ee776-e697-4580-9428-4143e3a15d3b/tasks/bl4lmrqti.output)",
+      "Bash(timeout 10 tail -f C:/Users/Salim/AppData/Local/Temp/claude/C--Users-Salim-predict-football-predictor/9f7ee776-e697-4580-9428-4143e3a15d3b/tasks/bw5vwu8dq.output)",
+      "Bash(tasklist)"
+    ]
+  }
+}
