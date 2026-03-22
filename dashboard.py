@@ -48,7 +48,9 @@ FORMATIONS = [
     "3-3-1-3", "3-3-3-1", "3-2-4-1",
 ]
 
-TRACKER_FILE = "data/prediction_tracker.json"
+from tracker_db import (
+    load_tracker, insert_prediction, bulk_update_editable, delete_predictions,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -63,39 +65,6 @@ def load_pipeline():
     formation_data, team_most_used, player_xg_lookup = load_understat_lookups(DB_PATH)
     return (dc, xgb_model, xgb_u35, xgb_u45, meta, df, team_view, df_standings, teams,
             formation_data, team_most_used)
-
-
-def load_tracker():
-    if os.path.exists(TRACKER_FILE):
-        with open(TRACKER_FILE) as f:
-            text = f.read()
-        # Replace bare NaN (invalid JSON) with null before parsing
-        import re
-        text = re.sub(r'\bNaN\b', 'null', text)
-        return json.loads(text)
-    return []
-
-
-def _sanitize_for_json(records):
-    """Replace NaN/inf with None so json.dump produces valid JSON."""
-    import math
-    clean = []
-    for rec in records:
-        row = {}
-        for k, v in rec.items():
-            if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
-                row[k] = None
-            else:
-                row[k] = v
-        clean.append(row)
-    return clean
-
-
-def save_tracker(records):
-    os.makedirs(os.path.dirname(TRACKER_FILE), exist_ok=True)
-    records = _sanitize_for_json(records)
-    with open(TRACKER_FILE, "w") as f:
-        json.dump(records, f, indent=2, default=str)
 
 
 # ---------------------------------------------------------------------------
@@ -554,6 +523,7 @@ def screen_predictor():
                 "signal": signal_25,
                 "bet_placed": False,
                 "result": None,
+                "final_score": None,
                 # U3.5 fields
                 "dc_prob_u35": round(dc_u35 * 100, 1),
                 "blended_u35": round(blended_u35 * 100, 1),
@@ -571,9 +541,7 @@ def screen_predictor():
                 "bet_placed_u45": False,
                 "result_u45": None,
             }
-            tracker = load_tracker()
-            tracker.append(record)
-            save_tracker(tracker)
+            insert_prediction(record)
             st.success("Logged to tracker.")
 
 
@@ -621,13 +589,13 @@ def screen_tracker():
                     "signal": add_signal,
                     "bet_placed": "BET" in add_signal,
                     "result": add_result,
+                    "final_score": None,
                     "dc_prob_u35": None, "blended_u35": None, "poly_u35": None,
                     "edge_u35": None, "signal_u35": None, "bet_placed_u35": False, "result_u35": None,
                     "dc_prob_u45": None, "blended_u45": None, "poly_u45": None,
                     "edge_u45": None, "signal_u45": None, "bet_placed_u45": False, "result_u45": None,
                 }
-                tracker.append(new_record)
-                save_tracker(tracker)
+                insert_prediction(new_record)
                 st.success(f"Added: {add_match.strip()}")
                 st.rerun()
 
@@ -638,11 +606,11 @@ def screen_tracker():
 
     # Editable table
     st.subheader("Prediction Log")
-    st.caption("Edit 'bet_placed' and 'result' columns below, then click Save.")
+    st.caption("Edit bet_placed, result, and final_score columns below, then click Save.")
 
-    # Ensure new columns exist for older records
+    # Ensure columns exist for older records
     for col, default in [
-        ("blended_prob", None),
+        ("blended_prob", None), ("final_score", None),
         ("dc_prob_u35", None), ("blended_u35", None), ("poly_u35", None),
         ("edge_u35", None), ("signal_u35", None), ("bet_placed_u35", False),
         ("result_u35", None),
@@ -653,9 +621,6 @@ def screen_tracker():
         if col not in df.columns:
             df[col] = default
 
-    # Add row index for selection
-    df.insert(0, "#", range(1, len(df) + 1))
-
     # O/U 2.5 tab and U3.5/U4.5 tabs
     t_25, t_35, t_45 = st.tabs(["O/U 2.5", "Under 3.5", "Under 4.5"])
 
@@ -663,7 +628,7 @@ def screen_tracker():
         edited = st.data_editor(
             df,
             column_config={
-                "#": st.column_config.NumberColumn("#", disabled=True, width="small"),
+                "id": None,
                 "date": st.column_config.TextColumn("Date", disabled=True),
                 "match": st.column_config.TextColumn("Match", disabled=True),
                 "home_formation": None,
@@ -677,6 +642,8 @@ def screen_tracker():
                 "signal": st.column_config.TextColumn("Signal", disabled=True),
                 "bet_placed": st.column_config.CheckboxColumn("Bet?"),
                 "result": st.column_config.SelectboxColumn("Result", options=["over", "under", None]),
+                "final_score": st.column_config.TextColumn("Score", help="e.g. 2-1"),
+                "created_at": None,
                 # Hide U3.5/U4.5 columns
                 "dc_prob_u35": None, "blended_u35": None, "poly_u35": None,
                 "edge_u35": None, "signal_u35": None, "bet_placed_u35": None,
@@ -694,9 +661,9 @@ def screen_tracker():
         df_u35 = df[df["poly_u35"].notna() & (df["poly_u35"] != 0)].copy() if "poly_u35" in df.columns else pd.DataFrame()
         if len(df_u35) > 0:
             edited_u35 = st.data_editor(
-                df_u35[["#", "date", "match", "dc_prob_u35", "blended_u35", "poly_u35", "edge_u35", "signal_u35", "bet_placed_u35", "result_u35"]],
+                df_u35[["id", "date", "match", "dc_prob_u35", "blended_u35", "poly_u35", "edge_u35", "signal_u35", "bet_placed_u35", "result_u35"]],
                 column_config={
-                    "#": st.column_config.NumberColumn("#", disabled=True, width="small"),
+                    "id": None,
                     "date": st.column_config.TextColumn("Date", disabled=True),
                     "match": st.column_config.TextColumn("Match", disabled=True),
                     "dc_prob_u35": st.column_config.NumberColumn("DC P(U3.5) %", format="%.1f", disabled=True),
@@ -723,9 +690,9 @@ def screen_tracker():
         df_u45 = df[df["poly_u45"].notna() & (df["poly_u45"] != 0)].copy() if "poly_u45" in df.columns else pd.DataFrame()
         if len(df_u45) > 0:
             edited_u45 = st.data_editor(
-                df_u45[["#", "date", "match", "dc_prob_u45", "blended_u45", "poly_u45", "edge_u45", "signal_u45", "bet_placed_u45", "result_u45"]],
+                df_u45[["id", "date", "match", "dc_prob_u45", "blended_u45", "poly_u45", "edge_u45", "signal_u45", "bet_placed_u45", "result_u45"]],
                 column_config={
-                    "#": st.column_config.NumberColumn("#", disabled=True, width="small"),
+                    "id": None,
                     "date": st.column_config.TextColumn("Date", disabled=True),
                     "match": st.column_config.TextColumn("Match", disabled=True),
                     "dc_prob_u45": st.column_config.NumberColumn("DC P(U4.5) %", format="%.1f", disabled=True),
@@ -751,31 +718,24 @@ def screen_tracker():
     btn_col1, btn_col2 = st.columns([1, 3])
     with btn_col1:
         if st.button("Save changes", type="primary"):
-            save_df = edited.drop(columns=["#"], errors="ignore")
-            save_tracker(save_df.to_dict(orient="records"))
+            records = edited.to_dict(orient="records")
+            bulk_update_editable(records)
             st.success("Saved.")
             st.rerun()
 
-    # Delete by row number
     with btn_col2:
         with st.popover("Delete predictions"):
-            st.caption("Enter row numbers to delete (shown in '#' column).")
-            del_input = st.text_input("Row numbers (comma-separated)", placeholder="e.g. 1, 3, 5", key="del_rows_input")
+            st.caption("Select predictions to delete by their row number.")
+            row_nums = list(range(1, len(df) + 1))
+            del_selection = st.multiselect("Rows to delete", row_nums, key="del_rows_select")
             if st.button("Confirm delete", type="secondary"):
-                if del_input.strip():
-                    try:
-                        to_delete = {int(x.strip()) for x in del_input.split(",")}
-                        # Row numbers are 1-based
-                        remaining = [rec for i, rec in enumerate(tracker) if (i + 1) not in to_delete]
-                        deleted_count = len(tracker) - len(remaining)
-                        if deleted_count > 0:
-                            save_tracker(remaining)
-                            st.success(f"Deleted {deleted_count} prediction(s).")
-                            st.rerun()
-                        else:
-                            st.warning("No matching row numbers found.")
-                    except ValueError:
-                        st.error("Invalid input. Use comma-separated numbers (e.g. 1, 3, 5).")
+                if del_selection:
+                    # Map row numbers (1-based) to prediction ids
+                    ids_to_delete = [tracker[i - 1]["id"] for i in del_selection if i <= len(tracker)]
+                    if ids_to_delete:
+                        delete_predictions(ids_to_delete)
+                        st.success(f"Deleted {len(ids_to_delete)} prediction(s).")
+                        st.rerun()
 
     # ── Running stats ─────────────────────────────────────────────────
     st.divider()
@@ -793,7 +753,6 @@ def screen_tracker():
     if len(resolved) > 0:
         correct = 0
         for _, row in resolved.iterrows():
-            # Use blended_prob if available, fall back to our_prob
             prob = row.get("blended_prob")
             if pd.isna(prob):
                 prob = row["our_prob"]
@@ -848,7 +807,6 @@ def screen_tracker():
         b2.metric("Est. ROI", f"{roi_pct:+.1f}%", help="Per unit bet, resolved bets only")
         b3.metric("Resolved bets", f"{len(resolved_bets)}")
 
-        # Win/loss breakdown
         st.caption(f"Wins: {wins} / Losses: {len(resolved_bets) - wins}")
     else:
         s4.metric("Bet hit rate", "-")
