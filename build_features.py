@@ -58,9 +58,9 @@ for col in ["h_tier_score", "formation_matchup_avg_goals", "h2h_avg_goals",
 print()
 print("=== Verification Checks ===")
 
-# Check 1: row count
-assert len(df) == 1456, f"FAIL row count: {len(df)}"
-print(f"[OK] Row count = 1456")
+# Check 1: row count (should grow as new matches are added)
+assert len(df) >= 1456, f"FAIL row count too low: {len(df)}"
+print(f"[OK] Row count = {len(df)}")
 
 # Check 2: target distribution ~60.9%
 rate = over / total
